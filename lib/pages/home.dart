@@ -21,7 +21,7 @@ class Home extends StatelessWidget {
         color: Colors.white,
         child: const Center(
           child: Text(
-            "Home Page",
+            "THIS SHIT IS ASS KYS!!!!!",
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.normal,
