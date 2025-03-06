@@ -1,23 +1,71 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class TransactionHistory extends StatefulWidget {
-  const TransactionHistory({super.key});
+  const TransactionHistory({Key? key}) : super(key: key);
 
   @override
   State<TransactionHistory> createState() => _TransactionHistoryState();
 }
 
 class _TransactionHistoryState extends State<TransactionHistory> {
-  // Empty list of transactions
   List<Map<String, dynamic>> transactions = [];
-
-  // Variable to hold the search query
   String searchQuery = '';
-
-  // To toggle the visibility of delete button
   bool _showDeleteButton = false;
 
-  // Function to filter transactions based on search
+  @override
+  void initState() {
+    super.initState();
+    _initializeTransactions();
+  }
+
+  // Initialize transactions: load from SharedPreferences or use sample data
+  Future<void> _initializeTransactions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final transactionsJson = prefs.getString('transactions');
+
+    if (transactionsJson == null) {
+      // No stored transactions, use sample data and save it
+      transactions = [
+        {"title": "Grocery Shopping", "date": "03/01/2025", "amount": 50.25, "type": "payment"},
+        {"title": "Salary", "date": "03/01/2025", "amount": 1500.00, "type": "income"},
+        {"title": "Restaurant", "date": "03/03/2025", "amount": 75.00, "type": "payment"},
+      ];
+      await _saveTransactions();
+    } else {
+      // Load saved transactions
+      final List<dynamic> decodedTransactions = jsonDecode(transactionsJson);
+      setState(() {
+        transactions = decodedTransactions.cast<Map<String, dynamic>>();
+      });
+    }
+  }
+
+  // Save transactions to SharedPreferences
+  Future<void> _saveTransactions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final transactionsJson = jsonEncode(transactions);
+    await prefs.setString('transactions', transactionsJson);
+  }
+
+  // Add a new transaction
+  Future<void> _addTransaction(String title, String date, double amount, String type) async {
+    setState(() {
+      transactions.add({"title": title, "date": date, "amount": amount, "type": type});
+    });
+    await _saveTransactions();
+  }
+
+  // Remove a transaction
+  Future<void> _removeTransaction(int index) async {
+    setState(() {
+      transactions.removeAt(index);
+    });
+    await _saveTransactions();
+  }
+
   List<Map<String, dynamic>> get filteredTransactions {
     return transactions
         .where((transaction) =>
@@ -25,26 +73,12 @@ class _TransactionHistoryState extends State<TransactionHistory> {
         .toList();
   }
 
-  // Function to add a transaction to the list
-  void _addTransaction(String title, String date, double amount, String type) {
-    setState(() {
-      transactions.add({"title": title, "date": date, "amount": amount, "type": type});
-    });
-  }
-
-  // Function to remove a transaction
-  void _removeTransaction(int index) {
-    setState(() {
-      transactions.removeAt(index);
-    });
-  }
-
-  // Function to show the add transaction dialog
   void _showAddTransactionDialog() {
     String title = '';
     String date = '';
     double amount = 0.0;
-    String type = 'payment'; // Default to payment
+    String type = 'payment';
+    final dateController = TextEditingController();
 
     showDialog(
       context: context,
@@ -61,7 +95,8 @@ class _TransactionHistoryState extends State<TransactionHistory> {
                 },
               ),
               TextField(
-                decoration: const InputDecoration(hintText: 'Date of transaction'),
+                controller: dateController,
+                decoration: const InputDecoration(hintText: 'MM/DD/YYYY'),
                 onChanged: (value) {
                   date = value;
                 },
@@ -75,7 +110,7 @@ class _TransactionHistoryState extends State<TransactionHistory> {
               ),
               DropdownButton<String>(
                 value: type,
-                items: [
+                items: const [
                   DropdownMenuItem(value: 'payment', child: Text('Payment')),
                   DropdownMenuItem(value: 'income', child: Text('Income')),
                 ],
@@ -95,10 +130,19 @@ class _TransactionHistoryState extends State<TransactionHistory> {
               child: const Text("Cancel"),
             ),
             ElevatedButton(
-              onPressed: () {
-                if (title.isNotEmpty && date.isNotEmpty && amount > 0) {
-                  _addTransaction(title, date, amount, type);
+              onPressed: () async {
+                if (title.isNotEmpty &&
+                    date.isNotEmpty &&
+                    amount > 0 &&
+                    _isValidDate(date)) {
+                  await _addTransaction(title, date, amount, type);
                   Navigator.of(context).pop();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Invalid date format. Please use MM/DD/YYYY.'),
+                    ),
+                  );
                 }
               },
               child: const Text("Add"),
@@ -109,106 +153,125 @@ class _TransactionHistoryState extends State<TransactionHistory> {
     );
   }
 
+  bool _isValidDate(String date) {
+    try {
+      DateFormat('MM/dd/yyyy').parseStrict(date);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        title: Text(
-          "Transaction History",
-          style: const TextStyle(color: Colors.black, fontSize: 26, fontFamily: 'Quicksand'),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white,
+            Colors.blueGrey,
+          ],
         ),
-        actions: [
-          // Add Transaction Button in top-right corner
-          Padding(
-            padding: const EdgeInsets.only(right: 20.0),
-            child: IconButton(
-              icon: Icon(Icons.add_circle, size: 35, color: Colors.black),
-              onPressed: _showAddTransactionDialog, // Show popup dialog
-            ),
-          ),
-        ],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Special Button to toggle delete visibility
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _showDeleteButton = !_showDeleteButton; // Toggle delete button visibility
-                });
-              },
-              child: Text(_showDeleteButton ? 'Disable Delete' : 'Enable Delete'),
-            ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+          title: const Text(
+            "Transaction History",
+            style: TextStyle(color: Colors.black, fontSize: 26, fontFamily: 'Quicksand'),
           ),
-          // Search Bar under "Transaction History"
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search by transaction',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                prefixIcon: Icon(Icons.search),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 20.0),
+              child: IconButton(
+                icon: const Icon(Icons.add_circle, size: 35, color: Colors.black),
+                onPressed: _showAddTransactionDialog,
               ),
-              onChanged: (query) {
-                setState(() {
-                  searchQuery = query;
-                });
-              },
             ),
-          ),
-          // History Title
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Text(
-              "Transaction History",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ],
+        ),
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _showDeleteButton = !_showDeleteButton;
+                  });
+                },
+                child: Text(_showDeleteButton ? 'Disable Delete' : 'Enable Delete'),
+              ),
             ),
-          ),
-          // Transaction List
-          Expanded(
-            child: ListView.builder(
-              itemCount: filteredTransactions.length,
-              itemBuilder: (context, index) {
-                final transaction = filteredTransactions[index];
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: transaction["type"] == "income"
-                        ? Colors.green[100]
-                        : Colors.red[100],
-                    child: Icon(
-                      Icons.receipt,
-                      color: transaction["type"] == "income" ? Colors.green : Colors.red,
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search by transaction',
+                  filled: true,
+                  fillColor: Colors.grey[200],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                  prefixIcon: const Icon(Icons.search),
+                ),
+                onChanged: (query) {
+                  setState(() {
+                    searchQuery = query;
+                  });
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: const Text(
+                "Transaction History",
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: filteredTransactions.length,
+                itemBuilder: (context, index) {
+                  final transaction = filteredTransactions[index];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: transaction["type"] == "income"
+                          ? Colors.green[100]
+                          : Colors.red[100],
+                      child: Icon(
+                        Icons.receipt,
+                        color: transaction["type"] == "income" ? Colors.green : Colors.red,
+                      ),
                     ),
-                  ),
-                  title: Text(transaction["title"], style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(transaction["date"]),
-                  trailing: _showDeleteButton
-                      ? IconButton(
-                    icon: Icon(Icons.delete, color: Colors.red),
-                    onPressed: () {
-                      _removeTransaction(index); // Remove the transaction
-                    },
-                  )
-                      : Text(
-                    "\$${transaction["amount"].toStringAsFixed(2)}",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: transaction["type"] == "income" ? Colors.green : Colors.red,
+                    title: Text(transaction["title"],
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(transaction["date"]),
+                    trailing: _showDeleteButton
+                        ? IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () async {
+                        await _removeTransaction(index);
+                      },
+                    )
+                        : Text(
+                      "\$${transaction["amount"].toStringAsFixed(2)}",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: transaction["type"] == "income" ? Colors.green : Colors.red,
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
